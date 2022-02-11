@@ -518,7 +518,6 @@ test_torch_deploy() {
   ln -sf "$TORCH_LIB_DIR"/libshm* "$TORCH_BIN_DIR"
   ln -sf "$TORCH_LIB_DIR"/libc10* "$TORCH_BIN_DIR"
   "$TORCH_BIN_DIR"/test_deploy
-  "$TORCH_BIN_DIR"/test_api --gtest_filter='IMethodTest.*'
   assert_git_not_dirty
 }
 
@@ -551,6 +550,8 @@ elif [[ "${BUILD_ENVIRONMENT}" == *-test1 || "${JOB_BASE_NAME}" == *-test1 || ("
   install_torchvision
   test_python_shard 1
   test_aten
+elif [[ "${BUILD_ENVIRONMENT}" == *deploy* ]]; then
+  test_torch_deploy
 elif [[ "${BUILD_ENVIRONMENT}" == *-test2 || "${JOB_BASE_NAME}" == *-test2 || ("${SHARD_NUMBER}" == 2 && $NUM_TEST_SHARDS -gt 1) ]]; then
   install_torchvision
   test_python_shard 2
