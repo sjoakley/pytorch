@@ -1411,7 +1411,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
                       new_values.add_row(values[j])
       else:
           new_indices = indices
-          new_values[k] = values[k].index_select(dim - len(sparse_shape), index) for k in range(nnz)
+          new_values = values.index_select(dim - sparse_dim + 1, index);
     */
   const auto ndim = self.dim();
   if (ndim == 0) {
@@ -1556,13 +1556,8 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
         sparse_dim, dense_dim, res_sizes, res_indices, res_values, self.options());
   }
   else {
-    // The line below implements
-    // for i in range(nnz):
-    //     res_values[k] = values[k].index_select(dim - sparse_dim, index)
-    // This loop could be compressed into a single kernel call
-    // res_values = values.index_select(dim - sparse_dim + 1, index),
-    // where `+1` comes from indexing into `values` and not `values[k]`,
-    // so the dimension gets shifted by one position.
+    // It is sufficient to just perform `index_select` on values
+    // if `dim` refers to dense dimensions.
     const auto res_values = values.index_select(dim - sparse_dim + 1, index);
 
     return _sparse_coo_tensor_with_dims_and_tensors(
