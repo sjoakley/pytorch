@@ -1550,7 +1550,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
 
     auto res_indices = indices.index_select(1, selected_indices);
     res_indices[dim] = res_dim_indices;
-    auto res_values = values.index_select(0, selected_indices);
+    const auto res_values = values.index_select(0, selected_indices);
 
     return _sparse_coo_tensor_with_dims_and_tensors(
         sparse_dim, dense_dim, res_sizes, res_indices, res_values, self.options());
@@ -1562,6 +1562,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     for (const auto k : c10::irange(nnz)) {
       res_values[k] = values[k].index_select(dim - sparse_dim, index);
     }
+
     return _sparse_coo_tensor_with_dims_and_tensors(
         sparse_dim, dense_dim, res_sizes, indices, res_values, self.options());
   }
