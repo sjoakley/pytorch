@@ -1413,7 +1413,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
           new_indices = indices
           new_values[k] = values[k].index_select(dim - len(sparse_shape), index) for k in range(nnz)
     */
-  auto ndim = self.dim();
+  const auto ndim = self.dim();
   if (ndim == 0) {
     TORCH_CHECK_INDEX(false, "index_select() cannot be applied to a 0-dim tensor.");
   }
@@ -1421,14 +1421,15 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     TORCH_CHECK_INDEX(false, "index_select() argument index must be 1-D long-tensor.");
   }
   dim = maybe_wrap_dim(dim, ndim);
-  auto size = self.size(dim);
-  auto sparse_dim = self.sparse_dim();
-  auto dense_dim = self.dense_dim();
-  auto indices = self._indices();
-  auto values = self._values();
-  auto nnz = values.size(0);
+  const auto size = self.size(dim);
+  const auto sparse_dim = self.sparse_dim();
+  const auto dense_dim = self.dense_dim();
+  const auto indices = self._indices();
+  const auto values = self._values();
+  const auto nnz = values.size(0);
+  const auto index_len = index.size(0);
   auto res_sizes = self.sizes().vec();
-  res_sizes[dim] = index.size(0);
+  res_sizes[dim] = index_len;
 
   const auto grain_size = at::internal::GRAIN_SIZE;
   // 1 <= n_threads_nnz <= min(ceil(nnz / grain_size), get_num_threads())
@@ -1465,7 +1466,6 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
         }
     });
 
-    const auto index_len = res_sizes[dim];
     // 1 <= n_threads_nnz <= min(ceil(len(index) / grain_size), get_num_threads())
     const auto n_threads_index_len = std::max<int64_t>(
         1,
@@ -1556,14 +1556,14 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
         sparse_dim, dense_dim, res_sizes, res_indices, res_values, self.options());
   }
   else {
-    auto vsize = values.sizes().vec();
-    vsize[dim + 1 - sparse_dim] = index.size(0);
-    auto new_values = at::empty(vsize, values.options());
+    auto res_values_size = values.sizes().vec();
+    res_values_size[dim + 1 - sparse_dim] = index_len;
+    auto res_values = at::empty(res_values_size, values.options());
     for (const auto k : c10::irange(nnz)) {
-      new_values[k] = values[k].index_select(dim - sparse_dim, index);
+      res_values[k] = values[k].index_select(dim - sparse_dim, index);
     }
     return _sparse_coo_tensor_with_dims_and_tensors(
-        sparse_dim, dense_dim, res_sizes, indices, new_values, self.options());
+        sparse_dim, dense_dim, res_sizes, indices, res_values, self.options());
   }
 }
 
