@@ -3248,11 +3248,11 @@ def sample_inputs_searchsorted(op_info, device, dtype, requires_grad, **kwargs):
     sizes = ((0,), (M,), (0, 0), (M, M), (0, 0, 0), (M, M, M))
     inputs = []
     for size, noncontiguous, out_int32, right in product(sizes, [False, True], [False, True], [False, True]):
-        unsorted_tensor = make_arg(size, noncontiguous=noncontiguous)
-        input_tensor = make_arg(size, noncontiguous=noncontiguous)
+        unsorted_tensor = make_arg(size, non_contiguous=noncontiguous)
+        input_tensor = make_arg(size, non_contiguous=noncontiguous)
         if np.product(size) == 0:
             boundary_tensor = unsorted_tensor
-            sorter = make_tensor(size, dtype=torch.int64, device=device, noncontiguous=noncontiguous)
+            sorter = make_tensor(size, dtype=torch.int64, device=device, non_contiguous=noncontiguous)
         else:
             boundary_tensor, sorter = torch.sort(unsorted_tensor)
         side = "right" if right else "left"
@@ -4979,9 +4979,9 @@ class ShapeFuncInfo(OpInfo):
 
 def sample_inputs_foreach(self, device, dtype, N, *, noncontiguous=False, same_size=False):
     if same_size:
-        return [make_tensor((N, N), dtype=dtype, device=device, noncontiguous=noncontiguous) for _ in range(N)]
+        return [make_tensor((N, N), dtype=dtype, device=device, non_contiguous=noncontiguous) for _ in range(N)]
     else:
-        return [make_tensor((N - i, N - i), dtype=dtype, device=device, noncontiguous=noncontiguous) for i in range(N)]
+        return [make_tensor((N - i, N - i), dtype=dtype, device=device, non_contiguous=noncontiguous) for i in range(N)]
 
 
 def get_foreach_method_names(name):
@@ -7117,7 +7117,7 @@ def sample_inputs_embedding_bag(op_info, device, dtype, requires_grad, **kwargs)
 
     def make_long_input(shape, *, low, high, noncontiguous=False):
         return make_tensor(shape, device=device, dtype=torch.long, low=low, high=high,
-                           noncontiguous=noncontiguous)
+                           non_contiguous=noncontiguous)
 
     def make_per_sample_weight(flag, idx):
         # a tensor of float / double weights, or None
@@ -7512,7 +7512,7 @@ def sample_inputs_argwhere(op_info, device, dtype, requires_grad, **kwargs):
     t[mask] = 0
     yield SampleInput(t)
 
-    t = make_tensor((S, S), dtype=dtype, device=device, requires_grad=requires_grad, noncontiguous=True)
+    t = make_tensor((S, S), dtype=dtype, device=device, requires_grad=requires_grad, non_contiguous=True)
     t[mask] = 0
     yield SampleInput(t)
 
