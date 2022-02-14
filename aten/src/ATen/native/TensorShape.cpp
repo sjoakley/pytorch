@@ -1431,7 +1431,9 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
   auto res_sizes = self.sizes().vec();
   res_sizes[dim] = index_len;
 
+  // TODO: decide on optimal grain size for sparse tensors.
   const auto grain_size = at::internal::GRAIN_SIZE;
+
   // 1 <= n_threads_nnz <= min(ceil(nnz / grain_size), get_num_threads())
   const auto n_threads_nnz = std::max<int64_t>(
       1,
@@ -1454,8 +1456,8 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     // populate hash tables with values from `dim_indices`
     // for a faster look-up.
     // Since std::unordered_map is not thread-safe, we use
-    // `n_threads_nnz` maps per each thread. This way we
-    // avoid the need in synchronization.
+    // `n_threads_nnz` maps with a single map per thread.
+    // This way we avoid the need to synchronize.
     auto hash_tables = HashTables(n_threads_nnz);
     at::parallel_for(0, nnz, grain_size, [&](int64_t start, int64_t end) {
         const auto tid = at::get_thread_num();
@@ -1549,6 +1551,21 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     auto res_dim_indices_ptr_heads = std::vector<int64_t*>(n_threads_index_len);
     res_dim_indices_ptr_heads[0] = res_dim_indices.data_ptr<int64_t>();
 
+    // Given that any permutation of elements in `selected_indices` and
+    // `res_dim_indices` results in valid index tensors (as long as the same
+    // permutation to both of them), we can distribute their creating between
+    // threads with an arbitraty permutation in mind.
+    // For simplicity, we choose the following strategy of index distrubution
+    // between different threads:
+    // indices [0, nnz_threads[0]) are formed by thread 1,
+    // indices [nnz_threads[0], nnz_threads[0] + nnz_threads[1]) are formed by tensor 2,
+    // and so on.
+    // This partition preserves the validity of data and does not necessarily
+    // correspond to any previous partitioning of data in any of the previous
+    // `parallel_for` loops from above.
+
+    // Thread i starts writing into `selected_indices` and `res_dim_indices`
+    // at addresses `selected_indices_ptr_heads[i]` and `res_dim_indices_ptr_heads[i]`.
     for (const auto i : c10::irange(n_threads_index_len - 1)) {
       const auto nnz_per_i_thread = nnz_per_threads[i];
       selected_indices_ptr_heads[i + 1] = selected_indices_ptr_heads[i] + nnz_per_i_thread;
@@ -1565,17 +1582,24 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
             idx += size;
           }
 
-          // look up idx in hash tables
+          // Implementing
+          //
+          // If `indices[i] == index[j]`,
+          // then `i in selected_indices` and `j in res_dim_indices`
+          //
+          // efficiently.
           for (const auto& hash_table : hash_tables) {
             const auto search_idx = hash_table.find(idx);
             if (search_idx != hash_table.end()) {
               const auto idx_indices = search_idx->second;
               const auto idx_indices_size = idx_indices.size();
+              // Fill in indices `i`.
               std::copy(
                   idx_indices.begin(),
                   idx_indices.end(),
                   selected_indices_ptr_head_tid
               );
+              // Fill in indices `j`.
               std::fill(
                   res_dim_indices_ptr_head_tid,
                   res_dim_indices_ptr_head_tid + idx_indices_size,
