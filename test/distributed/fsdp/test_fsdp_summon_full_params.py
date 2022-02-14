@@ -54,9 +54,7 @@ class TestSummonFullParams(FSDPTest):
         [CPUOffload(offload_params=True), CPUOffload(offload_params=False)],
     )
     @parametrize("modify_outer", [True, False])
-    def test_summon_full_param_writeback(
-        self, writeback, cpu_offload, modify_outer
-    ):
+    def test_summon_full_param_writeback(self, writeback, cpu_offload, modify_outer):
         model = FSDP(
             nn.Sequential(
                 FSDP(nn.Linear(5, 5, bias=False)), nn.Linear(5, 3, bias=False)
