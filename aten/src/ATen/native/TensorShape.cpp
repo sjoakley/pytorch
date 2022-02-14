@@ -1445,7 +1445,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
 
     using Index = int64_t;
     // using std::vector is still faster even if `indices`
-    // consists of a single index.
+    // consists of a single REPEATED index.
     using Indices = std::vector<Index>;
     using HashTable = std::unordered_map<Index, Indices>;
     using HashTables = std::vector<HashTable>;
@@ -1518,6 +1518,28 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     for (const auto nnz_per_thread : nnz_per_threads) {
       res_nnz += nnz_per_thread;
     }
+
+    // Step 3:
+    // Now that we know the result's nnz value, we can form
+    // two index tensors:
+    // `selected_indices` - tensor that defines which entries/columns
+    // to select in `values`/`indices`, and
+    // `res_dim_indices` - tensor that defines `res_indices[dim]`.
+    // The relationships between `selected_indices`, `res_dim_indices`,
+    // `res_indices[dim]`, `res_values` are as follows:
+    //
+    // res_indices = indices.index_select(1, selected_indices);
+    // res_indices[dim] = res_dim_indices;
+    // res_values = values.index_select(0, selected_indices);
+    //
+    // Moreover, the relationship between `selected_indices` and
+    // `res_dim_indices` is as follows:
+    // if `indices[i] == index[j]`, then `i in selected_indices`
+    // and `j in res_dim_indices`.
+    // We use the hash tables from Step 1 to check whether
+    // `indices[i] == index[j] for all i in range(nnz), j in range(len(index))`
+    // efficiently in a single loop over `index`,
+    // see the `parallel_for` loop below.
 
     auto selected_indices = at::empty({res_nnz}, index.options());
     auto selected_indices_ptr_heads = std::vector<int64_t*>(n_threads_index_len);
