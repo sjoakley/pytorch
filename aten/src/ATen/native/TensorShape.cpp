@@ -1476,7 +1476,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     auto nnz_per_threads = std::vector<int64_t>(n_threads_index_len);
     at::parallel_for(0, index_len, grain_size, [&](int64_t start, int64_t end) {
         const auto tid = at::get_thread_num();
-        for (auto i = start; i < end; ++i) {
+        for (const auto i : c10::irange(start, end)) {
           auto idx = ptr_index[i];
           if (idx < -size || idx >= size) {
             TORCH_CHECK_INDEX(false,
@@ -1520,7 +1520,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
 
     at::parallel_for(0, index_len, grain_size, [&](int64_t start, int64_t end) {
         const auto tid = at::get_thread_num();
-        for (auto i = start; i < end; ++i) {
+        for (const auto i : c10::irange(start, end)) {
           auto idx = ptr_index[i];
           if (idx < 0) {
             idx += size;
