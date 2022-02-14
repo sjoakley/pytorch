@@ -1515,7 +1515,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
 
     // aggregate nnz per thread to form nnz of the result
     int64_t res_nnz = 0;
-    for (const auto& nnz_per_thread : nnz_per_threads) {
+    for (const auto nnz_per_thread : nnz_per_threads) {
       res_nnz += nnz_per_thread;
     }
 
@@ -1535,6 +1535,8 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
 
     at::parallel_for(0, index_len, grain_size, [&](int64_t start, int64_t end) {
         const auto tid = at::get_thread_num();
+        auto& selected_indices_ptr_head_tid = selected_indices_ptr_heads[tid];
+        auto& res_dim_indices_ptr_head_tid = res_dim_indices_ptr_heads[tid];
         for (const auto i : c10::irange(start, end)) {
           auto idx = ptr_index[i];
           if (idx < 0) {
@@ -1546,18 +1548,19 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
             const auto search_idx = hash_table.find(idx);
             if (search_idx != hash_table.end()) {
               const auto idx_indices = search_idx->second;
+              const auto idx_indices_size = idx_indices.size();
               std::copy(
                   idx_indices.begin(),
                   idx_indices.end(),
-                  selected_indices_ptr_heads[tid]
+                  selected_indices_ptr_head_tid
               );
               std::fill(
-                  res_dim_indices_ptr_heads[tid],
-                  res_dim_indices_ptr_heads[tid] + idx_indices.size(),
+                  res_dim_indices_ptr_head_tid,
+                  res_dim_indices_ptr_head_tid + idx_indices_size,
                   i
               );
-              selected_indices_ptr_heads[tid] += idx_indices.size();
-              res_dim_indices_ptr_heads[tid] += idx_indices.size();
+              selected_indices_ptr_head_tid += idx_indices_size;
+              res_dim_indices_ptr_head_tid += idx_indices_size;
             }
           }
         }
