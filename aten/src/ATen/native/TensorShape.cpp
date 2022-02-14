@@ -1556,12 +1556,14 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
         sparse_dim, dense_dim, res_sizes, res_indices, res_values, self.options());
   }
   else {
-    auto res_values_size = values.sizes().vec();
-    res_values_size[dim + 1 - sparse_dim] = index_len;
-    auto res_values = at::empty(res_values_size, values.options());
-    for (const auto k : c10::irange(nnz)) {
-      res_values[k] = values[k].index_select(dim - sparse_dim, index);
-    }
+    // The line below implements
+    // for i in range(nnz):
+    //     res_values[k] = values[k].index_select(dim - sparse_dim, index)
+    // This loop could be compressed into a single kernel call
+    // res_values = values.index_select(dim - sparse_dim + 1, index),
+    // where `+1` comes from indexing into `values` and not `values[k]`,
+    // so the dimension gets shifted by one position.
+    const auto res_values = values.index_select(dim - sparse_dim + 1, index);
 
     return _sparse_coo_tensor_with_dims_and_tensors(
         sparse_dim, dense_dim, res_sizes, indices, res_values, self.options());
