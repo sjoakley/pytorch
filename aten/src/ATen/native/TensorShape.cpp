@@ -1430,6 +1430,13 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
   auto res_sizes = self.sizes().vec();
   res_sizes[dim] = index.size(0);
 
+  const auto grain_size = at::internal::GRAIN_SIZE;
+  // 1 <= n_threads_nnz <= min(ceil(nnz / grain_size), get_num_threads())
+  const auto n_threads_nnz = std::max<int64_t>(
+      1,
+      std::min<int64_t>((nnz + grain_size - 1) / grain_size, at::get_num_threads())
+  );
+
   if (dim < sparse_dim) {
     const auto dim_indices = indices[dim].contiguous();
     const auto* ptr_dim_indices = dim_indices.data_ptr<int64_t>();
@@ -1438,13 +1445,6 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     using Indices = std::vector<Index>;
     using HashTable = std::unordered_map<Index, Indices>;
     using HashTables = std::vector<HashTable>;
-
-    const auto grain_size = at::internal::GRAIN_SIZE;
-    // 1 <= n_threads_nnz <= min(ceil(nnz / grain_size), get_num_threads())
-    const auto n_threads_nnz = std::max<int64_t>(
-        1,
-        std::min<int64_t>((nnz + grain_size - 1) / grain_size, at::get_num_threads())
-    );
 
     // Fill in hash tables
     auto hash_tables = HashTables(n_threads_nnz);
