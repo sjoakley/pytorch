@@ -1438,16 +1438,24 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
       std::min<int64_t>((nnz + grain_size - 1) / grain_size, at::get_num_threads())
   );
 
+  // If indexing into sparse dimensions
   if (dim < sparse_dim) {
     const auto dim_indices = indices[dim].contiguous();
     const auto* ptr_dim_indices = dim_indices.data_ptr<int64_t>();
 
     using Index = int64_t;
+    // using std::vector is still faster even if `indices`
+    // consists of a single index.
     using Indices = std::vector<Index>;
     using HashTable = std::unordered_map<Index, Indices>;
     using HashTables = std::vector<HashTable>;
 
-    // Fill in hash tables
+    // Step 1:
+    // populate hash tables with values from `dim_indices`
+    // for a faster look-up.
+    // Since std::unordered_map is not thread-safe, we use
+    // `n_threads_nnz` maps per each thread. This way we
+    // avoid the need in synchronization.
     auto hash_tables = HashTables(n_threads_nnz);
     at::parallel_for(0, nnz, grain_size, [&](int64_t start, int64_t end) {
         const auto tid = at::get_thread_num();
@@ -1472,6 +1480,13 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
         std::min<int64_t>((index_len + grain_size - 1) / grain_size, at::get_num_threads())
     );
 
+    // Step 2:
+    // Iterate over `index` and find which values from `index`
+    // map to which positions in `dim_indices` using hash tables
+    // from the previous step, then accumulate all the ranges
+    // to find out the nnz value for the resulting tensor.
+    // This data is computed per tread and needs aggregation
+    // for the final nnz value.
     const auto* ptr_index = index.data_ptr<int64_t>();
     auto nnz_per_threads = std::vector<int64_t>(n_threads_index_len);
     at::parallel_for(0, index_len, grain_size, [&](int64_t start, int64_t end) {
@@ -1555,6 +1570,7 @@ Tensor index_select_sparse_cpu(const Tensor& self, int64_t dim, const Tensor& in
     return _sparse_coo_tensor_with_dims_and_tensors(
         sparse_dim, dense_dim, res_sizes, res_indices, res_values, self.options());
   }
+  // If indexing into dense dimensions
   else {
     // It is sufficient to just perform `index_select` on values
     // if `dim` refers to dense dimensions.
